@@ -2,7 +2,8 @@ blueprint:
   name: Ball Python Temp Control
   description: >
     Automatically regulates day and night temperatures for a ball python enclosure
-    using a basking light and CTE based on warm-side temperature sensor.
+    using a basking light and CTE based on warm-side temperature sensor. Includes
+    a failsafe to shut down all heat sources if the temperature exceeds 35°C.
   domain: automation
   input:
     warm_side_sensor:
@@ -73,6 +74,22 @@ action:
         {{ iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float }}
       temp_buffer: "{{ buffer | float }}"
 
+  # 🔥 FAILSAFE: Immediately shut off all heating if too hot
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp > 35 }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input basking_switch
+          - service: switch.turn_off
+            target:
+              entity_id: !input cte_switch
+          - stop: true
+            error: "⚠️ FAILSAFE triggered: Warm side temp exceeded 35°C. Heat sources turned off."
+
+  # 🧠 Main temp regulation logic
   - choose:
       - conditions:
           - condition: template
