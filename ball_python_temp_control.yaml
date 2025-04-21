@@ -74,7 +74,7 @@ action:
         {{ iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float }}
       temp_buffer: "{{ buffer | float }}"
 
-  # 🔥 FAILSAFE: Immediately shut off all heating if too hot
+  #FAILSAFE: Immediately shut off all heating if too hot
   - choose:
       - conditions:
           - condition: template
@@ -87,8 +87,7 @@ action:
             target:
               entity_id: !input cte_switch
           - stop: true
-            error: "⚠️ FAILSAFE triggered: Warm side temp exceeded 35°C. Heat sources turned off."
-
+            
   # 🧠 Main temp regulation logic
   - choose:
       - conditions:
