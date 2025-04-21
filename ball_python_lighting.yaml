@@ -1,0 +1,79 @@
+blueprint:
+  name: Ball Python Lighting Schedule
+  description: >
+    Manages UVB and WLED lighting based on sun position and time.
+    UVB turns ON 1 hour after sunrise and OFF 30 minutes after sunset.
+    WLED switches to MorningLED preset when UVB turns on, and to NightLED when UVB turns off.
+    LEDs are fully turned off at 22:00.
+  domain: automation
+  input:
+    uvb_switch:
+      name: UVB Lamp Switch
+      selector:
+        entity:
+          domain: switch
+
+    wled_light:
+      name: WLED Light
+      selector:
+        entity:
+          domain: light
+
+    morning_preset:
+      name: Morning WLED Preset Name
+      selector:
+        text:
+
+    night_preset:
+      name: Night WLED Preset Name
+      selector:
+        text:
+
+trigger:
+  - platform: sun
+    event: sunrise
+    offset: "01:00:00"
+    id: sunrise_plus1
+
+  - platform: sun
+    event: sunset
+    offset: "00:30:00"
+    id: sunset_plus30
+
+  - platform: time
+    at: "22:00:00"
+    id: leds_off
+
+action:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: sunrise_plus1
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input uvb_switch
+          - service: light.turn_on
+            data:
+              entity_id: !input wled_light
+              effect: !input morning_preset
+
+      - conditions:
+          - condition: trigger
+            id: sunset_plus30
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input uvb_switch
+          - service: light.turn_on
+            data:
+              entity_id: !input wled_light
+              effect: !input night_preset
+
+      - conditions:
+          - condition: trigger
+            id: leds_off
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input wled_light
