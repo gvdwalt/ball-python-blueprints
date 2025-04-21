@@ -67,13 +67,16 @@ trigger:
 condition: []
 
 action:
+  - variables:
+      current_temp: "{{ states(warm_side_sensor) | float }}"
+      target_temp: >
+        {{ iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float }}
+      temp_buffer: "{{ buffer | float }}"
+
   - choose:
       - conditions:
           - condition: template
-            value_template: >
-              {{ states(warm_side_sensor) | float < (
-                iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float
-                - buffer | float) }}
+            value_template: "{{ current_temp < (target_temp - temp_buffer) }}"
         sequence:
           - service: switch.turn_on
             target:
@@ -86,10 +89,7 @@ action:
 
       - conditions:
           - condition: template
-            value_template: >
-              {{ states(warm_side_sensor) | float > (
-                iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float
-                + buffer | float) }}
+            value_template: "{{ current_temp > (target_temp + temp_buffer) }}"
         sequence:
           - service: switch.turn_off
             target:
@@ -103,10 +103,8 @@ action:
       - conditions:
           - condition: template
             value_template: >
-              {% set current = states(warm_side_sensor) | float %}
-              {% set target = iif(states(day_mode_boolean) == 'on', day_target_temp, night_target_temp) | float %}
-              {% set buff = buffer | float %}
-              {{ (current >= (target - buff)) and (current <= (target + buff)) }}
+              {{ (current_temp >= (target_temp - temp_buffer)) and
+                 (current_temp <= (target_temp + temp_buffer)) }}
         sequence:
           - service: switch.turn_off
             target:
