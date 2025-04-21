@@ -58,6 +58,7 @@ action:
   - variables:
       warm_sensor: !input warm_side_sensor
       target_temp_entity: !input target_temp
+      day_mode_entity: !input day_mode_boolean
       current_temp: "{{ states(warm_sensor) | float }}"
       target_temp: "{{ states(target_temp_entity) | float }}"
       buffer: !input buffer
@@ -86,7 +87,7 @@ action:
             target:
               entity_id: !input cte_switch
           - condition: template
-            value_template: "{{ is_state(!input day_mode_boolean, 'on') }}"
+            value_template: "{{ is_state(day_mode_entity, 'on') }}"
           - service: light.turn_on
             target:
               entity_id: !input basking_switch
@@ -100,7 +101,7 @@ action:
             target:
               entity_id: !input cte_switch
           - condition: template
-            value_template: "{{ is_state(!input day_mode_boolean, 'on') }}"
+            value_template: "{{ is_state(day_mode_entity, 'on') }}"
           - service: light.turn_on
             target:
               entity_id: !input basking_switch
@@ -117,14 +118,14 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ is_state(!input day_mode_boolean, 'on') }}"
+                    value_template: "{{ is_state(day_mode_entity, 'on') }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input basking_switch
               - conditions:
                   - condition: template
-                    value_template: "{{ is_state(!input day_mode_boolean, 'off') }}"
+                    value_template: "{{ is_state(day_mode_entity, 'off') }}"
                 sequence:
                   - service: light.turn_off
                     target:
