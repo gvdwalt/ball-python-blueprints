@@ -56,11 +56,14 @@ condition: []
 
 action:
   - variables:
-      current_temp: "{{ states(!input warm_side_sensor) | float }}"
-      target_temp: "{{ states(!input target_temp) | float }}"
+      warm_sensor: !input warm_side_sensor
+      target_temp_entity: !input target_temp
+      current_temp: "{{ states(warm_sensor) | float }}"
+      target_temp: "{{ states(target_temp_entity) | float }}"
       buffer: !input buffer
 
   - choose:
+
       # 🔥 FAILSAFE
       - conditions:
           - condition: template
