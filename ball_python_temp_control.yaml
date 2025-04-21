@@ -1,0 +1,25 @@
+blueprint:
+  name: Ball Python Temp Control
+  description: >
+    Automatically regulates day and night temperatures for a ball python enclosure
+    using a basking light and CTE based on warm-side temperature sensor.
+  domain: automation
+  input:
+    warm_side_sensor:
+      name: Warm Side Temperature Sensor
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    basking_switch:
+      name: Basking Light Switch
+      selector:
+        entity:
+          domain: switch
+
+    cte_switch:
+      name: Ceramic Tile Emitter (CTE) Switch
+      selector:
+        entity:
+          domain: switch
