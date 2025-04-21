@@ -23,3 +23,106 @@ blueprint:
       selector:
         entity:
           domain: switch
+
+    day_mode_boolean:
+      name: Day Mode Boolean
+      selector:
+        entity:
+          domain: input_boolean
+
+    day_target_temp:
+      name: Day Target Temperature (°C)
+      selector:
+        number:
+          min: 20
+          max: 40
+          step: 0.5
+          unit_of_measurement: °C
+
+    night_target_temp:
+      name: Night Target Temperature (°C)
+      selector:
+        number:
+          min: 15
+          max: 30
+          step: 0.5
+          unit_of_measurement: °C
+
+    buffer:
+      name: Temperature Buffer (±°C)
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 3
+          step: 0.5
+          unit_of_measurement: °C
+
+trigger:
+  - platform: state
+    entity_id: !input warm_side_sensor
+    for:
+      seconds: 30
+
+condition: []
+
+action:
+  - variables:
+      target_temp: >
+        {{ iif(states(input.day_mode_boolean) == 'on',
+               input.day_target_temp,
+               input.night_target_temp) | float }}
+      buffer: {{ input.buffer | float }}
+      current_temp: {{ states(input.warm_side_sensor) | float }}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp < (target_temp - buffer) }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input cte_switch
+          - if:
+              - condition: template
+                value_template: "{{ states(input.day_mode_boolean) == 'on' }}"
+            then:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input basking_switch
+
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp > (target_temp + buffer) }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input cte_switch
+          - if:
+              - condition: template
+                value_template: "{{ states(input.day_mode_boolean) == 'on' }}"
+            then:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input basking_switch
+
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ (current_temp >= (target_temp - buffer)) and
+                 (current_temp <= (target_temp + buffer)) }}
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id: !input cte_switch
+          - if:
+              - condition: template
+                value_template: "{{ states(input.day_mode_boolean) == 'on' }}"
+            then:
+              - service: switch.turn_on
+                target:
+                  entity_id: !input basking_switch
+            else:
+              - service: switch.turn_off
+                target:
+                  entity_id: !input basking_switch
