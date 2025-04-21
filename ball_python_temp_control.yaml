@@ -69,14 +69,19 @@ condition: []
 action:
   - variables:
       warm_sensor: !input warm_side_sensor
-      is_day: "{{ is_state(!input day_mode_boolean, 'on') }}"
-      target_temp: "{{ (is_state(!input day_mode_boolean, 'on') | iif(!input.day_target_temp, !input.night_target_temp)) | float }}"
-      buffer: !input buffer
+      day_mode: !input day_mode_boolean
       current_temp: "{{ states(warm_sensor) | float }}"
+      is_day: "{{ is_state(day_mode, 'on') }}"
+      target_temp: >
+        {% if is_state(day_mode, 'on') %}
+          {{ float(!input day_target_temp) }}
+        {% else %}
+          {{ float(!input night_target_temp) }}
+        {% endif %}
+      buffer: !input buffer
 
   - choose:
 
-      # 🔥 FAILSAFE
       - conditions:
           - condition: template
             value_template: "{{ current_temp > 35 }}"
@@ -89,7 +94,6 @@ action:
               entity_id: !input cte_switch
           - stop: true
 
-      # ❄️ Too Cold
       - conditions:
           - condition: template
             value_template: "{{ current_temp < (target_temp - buffer | float) }}"
@@ -98,12 +102,11 @@ action:
             target:
               entity_id: !input cte_switch
           - condition: template
-            value_template: "{{ is_day == 'True' }}"
+            value_template: "{{ is_day }}"
           - service: light.turn_on
             target:
               entity_id: !input basking_switch
 
-      # 🔥 Too Hot
       - conditions:
           - condition: template
             value_template: "{{ current_temp > (target_temp + buffer | float) }}"
@@ -112,12 +115,11 @@ action:
             target:
               entity_id: !input cte_switch
           - condition: template
-            value_template: "{{ is_day == 'True' }}"
+            value_template: "{{ is_day }}"
           - service: light.turn_on
             target:
               entity_id: !input basking_switch
 
-      # ✅ Within Target Range
       - conditions:
           - condition: template
             value_template: >
@@ -130,14 +132,14 @@ action:
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ is_day == 'True' }}"
+                    value_template: "{{ is_day }}"
                 sequence:
                   - service: light.turn_on
                     target:
                       entity_id: !input basking_switch
               - conditions:
                   - condition: template
-                    value_template: "{{ is_day != 'True' }}"
+                    value_template: "{{ not is_day }}"
                 sequence:
                   - service: light.turn_off
                     target:
