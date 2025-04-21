@@ -69,7 +69,7 @@ condition: []
 action:
   - choose:
 
-      # FAILSAFE
+      # 🔥 FAILSAFE
       - conditions:
           - condition: template
             value_template: >
@@ -83,7 +83,7 @@ action:
               entity_id: !input cte_switch
           - stop: true
 
-      # TOO COLD
+      # ❄️ TOO COLD
       - conditions:
           - condition: template
             value_template: >
@@ -101,7 +101,7 @@ action:
             target:
               entity_id: !input basking_switch
 
-      # TOO HOT
+      # 🔥 TOO HOT
       - conditions:
           - condition: template
             value_template: >
@@ -119,7 +119,7 @@ action:
             target:
               entity_id: !input basking_switch
 
-      # IN RANGE
+      # ✅ IN RANGE
       - conditions:
           - condition: template
             value_template: >
