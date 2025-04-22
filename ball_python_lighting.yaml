@@ -1,78 +1,115 @@
 blueprint:
   name: Ball Python Lighting Schedule
   description: >
-    Manages UVB and WLED lighting based on sun position and time.
-    UVB turns ON 1 hour after sunrise and OFF 30 minutes after sunset.
-    WLED switches to MorningLED preset when UVB turns on, and to NightLED when UVB turns off.
-    LEDs are fully turned off at 22:00.
+    Controls UVB light and WLED presets based on sunrise, sunset, and fixed time.
+    - Turns UVB ON + WLED to Morning preset 1 hour after sunrise
+    - Turns UVB OFF + WLED to Night preset 30 min after sunset
+    - Turns all WLED OFF at 22:00
   domain: automation
   input:
-    uvb_switch:
-      name: UVB Lamp Switch
-      selector:
-        entity:
-          domain: switch
-
-    wled_light:
-      name: WLED Light
+    uvb_light:
+      name: UVB Light Entity
       selector:
         entity:
           domain: light
 
+    wled_light:
+      name: WLED Light Entity
+      selector:
+        entity:
+          domain: light
+
+    wled_preset_select:
+      name: WLED Preset Selector (select entity)
+      selector:
+        entity:
+          domain: select
+
     morning_preset:
-      name: Morning WLED Preset Name
+      name: Morning Preset Name
       selector:
         text:
 
     night_preset:
-      name: Night WLED Preset Name
+      name: Night Preset Name
       selector:
         text:
+
+    day_mode_boolean:
+      name: (Optional) Day Mode Boolean
+      default: ""
+      selector:
+        entity:
+          domain: input_boolean
 
 trigger:
   - platform: sun
     event: sunrise
     offset: "01:00:00"
-    id: sunrise_plus1
+    id: sunrise_plus_1h
 
   - platform: sun
     event: sunset
     offset: "00:30:00"
-    id: sunset_plus30
+    id: sunset_plus_30m
 
   - platform: time
     at: "22:00:00"
-    id: leds_off
+    id: night_shutdown
 
 action:
   - choose:
       - conditions:
           - condition: trigger
-            id: sunrise_plus1
+            id: sunrise_plus_1h
         sequence:
-          - service: switch.turn_on
-            target:
-              entity_id: !input uvb_switch
           - service: light.turn_on
+            target:
+              entity_id: !input uvb_light
+          - service: select.select_option
+            target:
+              entity_id: !input wled_preset_select
             data:
+              option: !input morning_preset
+          - service: light.turn_on
+            target:
               entity_id: !input wled_light
-              effect: !input morning_preset
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ !input day_mode_boolean != '' }}"
+                sequence:
+                  - service: input_boolean.turn_on
+                    target:
+                      entity_id: !input day_mode_boolean
 
       - conditions:
           - condition: trigger
-            id: sunset_plus30
+            id: sunset_plus_30m
         sequence:
-          - service: switch.turn_off
+          - service: light.turn_off
             target:
-              entity_id: !input uvb_switch
-          - service: light.turn_on
+              entity_id: !input uvb_light
+          - service: select.select_option
+            target:
+              entity_id: !input wled_preset_select
             data:
+              option: !input night_preset
+          - service: light.turn_on
+            target:
               entity_id: !input wled_light
-              effect: !input night_preset
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ !input day_mode_boolean != '' }}"
+                sequence:
+                  - service: input_boolean.turn_off
+                    target:
+                      entity_id: !input day_mode_boolean
 
       - conditions:
           - condition: trigger
-            id: leds_off
+            id: night_shutdown
         sequence:
           - service: light.turn_off
             target:
