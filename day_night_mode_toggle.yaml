@@ -1,8 +1,8 @@
 blueprint:
   name: Day/Night Mode Toggle (Sun-based)
   description: >
-    Automatically sets day or night mode based on sunrise and sunset
-    by toggling a day_mode input_boolean.
+    Automatically sets day or night mode by toggling a day_mode input_boolean
+    based on sunrise (-30min) and sunset (+30min).
   domain: automation
   input:
     day_mode_boolean:
@@ -16,24 +16,26 @@ trigger:
   - platform: sun
     event: sunrise
     offset: "-00:30:00"
+    id: sunrise
 
   - platform: sun
     event: sunset
     offset: "00:30:00"
+    id: sunset
 
 action:
   - choose:
       - conditions:
-          - condition: sun
-            after: sunrise
+          - condition: trigger
+            id: sunrise
         sequence:
           - service: input_boolean.turn_on
             target:
               entity_id: !input day_mode_boolean
 
       - conditions:
-          - condition: sun
-            after: sunset
+          - condition: trigger
+            id: sunset
         sequence:
           - service: input_boolean.turn_off
             target:
