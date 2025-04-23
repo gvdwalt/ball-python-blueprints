@@ -5,7 +5,6 @@ blueprint:
     - Turns UVB ON + WLED to Morning preset 1 hour after sunrise
     - Turns UVB OFF + WLED to Night preset 30 min after sunset
     - Turns all WLED OFF at 22:00
-    - Optionally toggles day_mode input_boolean
   domain: automation
   input:
     uvb_light:
@@ -36,13 +35,6 @@ blueprint:
       selector:
         text:
 
-    day_mode_boolean:
-      name: (Optional) Day Mode Boolean
-      default: ""
-      selector:
-        entity:
-          domain: input_boolean
-
 trigger:
   - platform: sun
     event: sunrise
@@ -57,9 +49,6 @@ trigger:
   - platform: time
     at: "22:00:00"
     id: night_shutdown
-
-variables:
-  day_mode_entity: !input day_mode_boolean
 
 action:
   - choose:
@@ -80,14 +69,6 @@ action:
           - service: light.turn_on
             target:
               entity_id: !input wled_light
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ day_mode_entity != '' }}"
-                sequence:
-                  - service: input_boolean.turn_on
-                    target:
-                      entity_id: "{{ day_mode_entity }}"
 
       # 🌇 30 min after sunset
       - conditions:
@@ -105,14 +86,6 @@ action:
           - service: light.turn_on
             target:
               entity_id: !input wled_light
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ day_mode_entity != '' }}"
-                sequence:
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ day_mode_entity }}"
 
       # 🌌 Full lights off at 22:00
       - conditions:
