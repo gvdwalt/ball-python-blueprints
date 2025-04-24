@@ -1,8 +1,8 @@
 blueprint:
-  name: Ball Python Temp Control
+  name: Ball Python Temperature Control
   description: >
-    Regulates basking and CTE heat sources based on a helper-controlled target temperature.
-    Includes a failsafe shutdown if temp exceeds 35°C.
+    Controls basking and CTE heat sources based on day/night mode and warm-side temperature.
+    Includes failsafe shutdown at 35°C.
   domain: automation
   input:
     warm_side_sensor:
@@ -12,121 +12,130 @@ blueprint:
           domain: sensor
           device_class: temperature
 
-    target_temp:
-      name: Snake Target Temperature (Helper)
-      selector:
-        entity:
-          domain: input_number
-
-    basking_switch:
-      name: Basking Light Switch
-      selector:
-        entity:
-          domain: light
-
-    cte_switch:
-      name: CTE Switch
-      selector:
-        entity:
-          domain: switch
-
-    buffer:
-      name: Temperature Buffer (±°C)
-      default: 1
-      selector:
-        number:
-          min: 0.5
-          max: 3
-          step: 0.5
-          unit_of_measurement: °C
-
     day_mode_boolean:
       name: Day Mode Boolean
       selector:
         entity:
           domain: input_boolean
 
-trigger:
-  - platform: state
-    entity_id: !input warm_side_sensor
-    for:
-      seconds: 30
+    day_target_temp:
+      name: Day Target Temperature
+      selector:
+        entity:
+          domain: input_number
 
-condition: []
+    night_target_temp:
+      name: Night Target Temperature
+      selector:
+        entity:
+          domain: input_number
+
+    buffer:
+      name: Temperature Buffer (°C)
+      default: 0.5
+      selector:
+        number:
+          min: 0
+          max: 5
+          step: 0.1
+
+    basking_light:
+      name: Basking Light (Switch or Light)
+      selector:
+        entity:
+          domain:
+            - light
+            - switch
+
+    cte_switch:
+      name: Ceramic Tile Emitter (CTE) Switch
+      selector:
+        entity:
+          domain:
+            - switch
+            - light
+
+trigger:
+  - platform: time_pattern
+    minutes: "/5"
+
+variables:
+  current_temp: "{{ states(warm_side_sensor) | float }}"
+  target_temp: >
+    {{ iif(states(day_mode_boolean) == 'on',
+           states(day_target_temp) | float,
+           states(night_target_temp) | float) }}
+  temp_buffer: "{{ buffer | float }}"
 
 action:
-  - variables:
-      warm_sensor: !input warm_side_sensor
-      target_temp_entity: !input target_temp
-      day_mode_entity: !input day_mode_boolean
-      current_temp: "{{ states(warm_sensor) | float }}"
-      target_temp: "{{ states(target_temp_entity) | float }}"
-      buffer: !input buffer
-
   - choose:
 
-      # 🔥 FAILSAFE
+      # ❄️ Failsafe: Overheat condition (shutdown everything if temp > 35°C)
       - conditions:
-          - condition: template
-            value_template: "{{ current_temp > 35 }}"
+          - condition: numeric_state
+            entity_id: !input warm_side_sensor
+            above: 35
         sequence:
-          - service: light.turn_off
+          - service: homeassistant.turn_off
             target:
-              entity_id: !input basking_switch
-          - service: switch.turn_off
-            target:
-              entity_id: !input cte_switch
-          - stop: true
+              entity_id:
+                - !input basking_light
+                - !input cte_switch
 
-      # ❄️ TOO COLD
+      # ☀️ Day Mode Logic
       - conditions:
-          - condition: template
-            value_template: "{{ current_temp < (target_temp - buffer) }}"
+          - condition: state
+            entity_id: !input day_mode_boolean
+            state: "on"
         sequence:
-          - service: switch.turn_on
-            target:
-              entity_id: !input cte_switch
-          - condition: template
-            value_template: "{{ is_state(day_mode_entity, 'on') }}"
-          - service: light.turn_on
-            target:
-              entity_id: !input basking_switch
-
-      # 🔥 TOO HOT
-      - conditions:
-          - condition: template
-            value_template: "{{ current_temp > (target_temp + buffer) }}"
-        sequence:
-          - service: switch.turn_off
-            target:
-              entity_id: !input cte_switch
-          - condition: template
-            value_template: "{{ is_state(day_mode_entity, 'on') }}"
-          - service: light.turn_on
-            target:
-              entity_id: !input basking_switch
-
-      # ✅ IN RANGE
-      - conditions:
-          - condition: template
-            value_template: >
-              {{ (current_temp >= (target_temp - buffer)) and (current_temp <= (target_temp + buffer)) }}
-        sequence:
-          - service: switch.turn_off
-            target:
-              entity_id: !input cte_switch
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ is_state(day_mode_entity, 'on') }}"
+                    value_template: "{{ current_temp < target_temp - temp_buffer }}"
                 sequence:
-                  - service: light.turn_on
+                  - service: homeassistant.turn_on
                     target:
-                      entity_id: !input basking_switch
+                      entity_id:
+                        - !input basking_light
+                        - !input cte_switch
+
               - conditions:
                   - condition: template
-                    value_template: "{{ is_state(day_mode_entity, 'off') }}"
+                    value_template: "{{ current_temp > target_temp + temp_buffer }}"
                 sequence:
-                  - service: light.turn_off
+                  - service: homeassistant.turn_off
                     target:
-                      entity_id: !input basking_switch
+                      entity_id:
+                        - !input basking_light
+                        - !input cte_switch
+
+      # 🌙 Night Mode Logic (CTE only)
+      - conditions:
+          - condition: state
+            entity_id: !input day_mode_boolean
+            state: "off"
+        sequence:
+          # ✅ Always turn off basking at night
+          - service: homeassistant.turn_off
+            target:
+              entity_id: !input basking_light
+
+          # Then manage CTE based on temp
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp < target_temp - temp_buffer }}"
+                sequence:
+                  - service: homeassistant.turn_on
+                    target:
+                      entity_id: !input cte_switch
+
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp > target_temp + temp_buffer }}"
+                sequence:
+                  - service: homeassistant.turn_off
+                    target:
+                      entity_id: !input cte_switch
+
+mode: single
