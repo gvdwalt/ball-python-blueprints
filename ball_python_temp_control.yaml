@@ -2,6 +2,7 @@ blueprint:
   name: Ball Python Temp Control
   description: >
     Regulates basking and CTE heat sources based on a helper-controlled target temperature.
+    Instantly turns off basking light when day mode turns off.
     Includes a failsafe shutdown if temp exceeds 35°C.
   domain: automation
   input:
@@ -65,6 +66,17 @@ action:
       current_temp: "{{ states(warm_sensor) | float }}"
       target_temp: "{{ states(target_temp_entity) | float }}"
       buffer: !input buffer
+
+  # 💡 Immediate enforcement of night mode (basking off)
+  - choose:
+      - conditions:
+          - condition: state
+            entity_id: !input day_mode_boolean
+            state: "off"
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input basking_switch
 
   - choose:
 
