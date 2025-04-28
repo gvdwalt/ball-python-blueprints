@@ -1,5 +1,5 @@
 blueprint:
-  name: Ball Python Temp Control (with Cooldown Mode)
+  name: Ball Python Temp Control
   description: >
     Regulates basking and CTE heat sources based on a helper-controlled target temperature.
     Includes a failsafe shutdown if temp exceeds 35°C.
