@@ -1,0 +1,232 @@
+blueprint:
+  name: Ball Python Temp Control (2-Stage Heating)
+  description: >
+    Two-stage heating for a ball python enclosure with hysteresis and day/night bias.
+    Stage-1 = primary CTE (100W). Stage-2 = secondary CTE (50W) that assists only when needed.
+    Basking light follows day mode. Includes 35°C failsafe.
+  domain: automation
+
+  input:
+    warm_side_sensor:
+      name: Warm Side Temperature Sensor
+      selector:
+        entity:
+          domain: sensor
+          device_class: temperature
+
+    target_temp:
+      name: Snake Target Temperature (Helper)
+      selector:
+        entity:
+          domain: input_number
+
+    basking_switch:
+      name: Basking Light (daytime)
+      selector:
+        entity:
+          domain: light
+
+    cte_switch:
+      name: Primary CTE (100W)
+      selector:
+        entity:
+          domain: switch
+
+    cte2_switch:
+      name: Secondary CTE (50W)
+      selector:
+        entity:
+          domain: switch
+
+    buffer:
+      name: Temperature Buffer (±°C)
+      default: 1
+      selector:
+        number:
+          min: 0.5
+          max: 3
+          step: 0.1
+          unit_of_measurement: "°C"
+
+    stage2_on_delta_day:
+      name: Stage-2 ON extra drop (DAY) °C below lower band
+      description: "How much further below target − buffer before Stage-2 (50W) turns on during the day."
+      default: 1.0
+      selector:
+        number:
+          min: 0.2
+          max: 3
+          step: 0.1
+          unit_of_measurement: "°C"
+
+    stage2_on_delta_night:
+      name: Stage-2 ON extra drop (NIGHT) °C below lower band
+      description: "Night bias — let Stage-2 help earlier at night."
+      default: 0.5
+      selector:
+        number:
+          min: 0.2
+          max: 3
+          step: 0.1
+          unit_of_measurement: "°C"
+
+    stage2_off_delta:
+      name: Stage-2 OFF recovery margin (°C)
+      description: "How close to target before turning the 50W off again (hysteresis). Larger = stays on longer."
+      default: 0.3
+      selector:
+        number:
+          min: 0.1
+          max: 1.5
+          step: 0.1
+          unit_of_measurement: "°C"
+
+    day_mode_boolean:
+      name: Day Mode Boolean
+      selector:
+        entity:
+          domain: input_boolean
+
+trigger:
+  - platform: state
+    entity_id: !input warm_side_sensor
+    for:
+      seconds: 30
+  # periodic re-eval to keep decisions fresh even if sensor is steady
+  - platform: time_pattern
+    minutes: "/5"
+
+condition: []
+
+action:
+  - variables:
+      warm_sensor: !input warm_side_sensor
+      target_temp_entity: !input target_temp
+      day_mode_entity: !input day_mode_boolean
+      current_temp: "{{ states(warm_sensor) | float(0) }}"
+      target_temp: "{{ states(target_temp_entity) | float(0) }}"
+      buffer: !input buffer
+      s2_on_day: !input stage2_on_delta_day
+      s2_on_night: !input stage2_on_delta_night
+      s2_off_delta: !input stage2_off_delta
+
+      # Stage-1 band
+      low1: "{{ target_temp - buffer }}"
+      high1: "{{ target_temp + buffer }}"
+
+      # Stage-2 thresholds (different ON threshold for day vs night, single OFF threshold with hysteresis)
+      s2_on_threshold: >
+        {{ target_temp - ( buffer + ( s2_on_day if is_state(day_mode_entity, 'on') else s2_on_night ) ) }}
+      s2_off_threshold: >
+        {{ target_temp - ( buffer - s2_off_delta ) }}
+
+  - choose:
+
+      # 🔥 FAILSAFE
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp > 35 }}"
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id: !input basking_switch
+          - service: switch.turn_off
+            target:
+              entity_id:
+                - !input cte_switch
+                - !input cte2_switch
+          - stop: true
+
+      # 🧊 SEVERE COLD — well below target → Stage-1 + Stage-2
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp < s2_on_threshold }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id:
+                - !input cte_switch
+                - !input cte2_switch
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_state(day_mode_entity, 'on') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input basking_switch
+
+      # ❄️ MODERATE COLD — below lower band → Stage-1 ON, Stage-2 depends on recovery threshold
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp < low1 }}"
+        sequence:
+          - service: switch.turn_on
+            target:
+              entity_id: !input cte_switch
+          - choose:
+              # keep Stage-2 ON until we've recovered past the warmer s2_off_threshold
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp < s2_off_threshold }}"
+                sequence:
+                  - service: switch.turn_on
+                    target:
+                      entity_id: !input cte2_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ current_temp >= s2_off_threshold }}"
+                sequence:
+                  - service: switch.turn_off
+                    target:
+                      entity_id: !input cte2_switch
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_state(day_mode_entity, 'on') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input basking_switch
+
+      # ✅ IN RANGE — both CTEs OFF; basking follows day/night
+      - conditions:
+          - condition: template
+            value_template: "{{ (current_temp >= low1) and (current_temp <= high1) }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id:
+                - !input cte2_switch
+                - !input cte_switch
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_state(day_mode_entity, 'on') }}"
+                sequence:
+                  - service: light.turn_on
+                    target:
+                      entity_id: !input basking_switch
+              - conditions:
+                  - condition: template
+                    value_template: "{{ is_state(day_mode_entity, 'off') }}"
+                sequence:
+                  - service: light.turn_off
+                    target:
+                      entity_id: !input basking_switch
+
+      # 🌡️ TOO HOT — everything that makes heat OFF (including basking)
+      - conditions:
+          - condition: template
+            value_template: "{{ current_temp > high1 }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id:
+                - !input cte2_switch
+                - !input cte_switch
+          - service: light.turn_off
+            target:
+              entity_id: !input basking_switch
+
+mode: single
