@@ -3,7 +3,8 @@ blueprint:
   description: >
     Two-stage heating for a ball python enclosure with hysteresis and day/night bias.
     Stage-1 = primary CTE (100W). Stage-2 = secondary CTE (50W) that assists only when needed.
-    Basking light follows day mode. Includes 35°C failsafe.
+    Basking light follows day mode. Includes 35°C failsafe and turns all heat off
+    when the warm-side sensor is invalid.
   domain: automation
 
   input:
@@ -103,6 +104,8 @@ action:
       warm_sensor: !input warm_side_sensor
       target_temp_entity: !input target_temp
       day_mode_entity: !input day_mode_boolean
+      # an unknown/unavailable sensor must not be read as 0 °C (that would turn all heat on)
+      temp_valid: "{{ is_number(states(warm_sensor)) }}"
       current_temp: "{{ states(warm_sensor) | float(0) }}"
       target_temp: "{{ states(target_temp_entity) | float(0) }}"
       buffer: !input buffer
@@ -121,6 +124,21 @@ action:
         {{ target_temp - ( buffer - s2_off_delta ) }}
 
   - choose:
+
+      # 🚫 SENSOR INVALID — no temperature feedback, so all heat OFF
+      - conditions:
+          - condition: template
+            value_template: "{{ not temp_valid }}"
+        sequence:
+          - service: switch.turn_off
+            target:
+              entity_id:
+                - !input cte_switch
+                - !input cte2_switch
+          - service: light.turn_off
+            target:
+              entity_id: !input basking_switch
+          - stop: "Warm-side sensor invalid; all heat off."
 
       # 🔥 FAILSAFE
       - conditions:
